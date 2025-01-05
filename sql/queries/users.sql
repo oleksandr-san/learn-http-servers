@@ -9,7 +9,6 @@ VALUES (
 )
 RETURNING *;
 
-
 -- name: UpdateUser :one
 UPDATE users
 SET
@@ -22,7 +21,6 @@ RETURNING *;
 -- name: DeleteAllUsers :exec
 DELETE FROM users;
 
-
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE email = $1;
 
@@ -30,3 +28,9 @@ SELECT * FROM users WHERE email = $1;
 SELECT users.* FROM users
 JOIN refresh_tokens ON users.id = refresh_tokens.user_id
 WHERE refresh_tokens.token = $1;
+
+-- name: UpdateChirpyRedStatus :one
+UPDATE users
+SET is_chirpy_red = $2
+WHERE id = $1
+RETURNING *;

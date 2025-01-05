@@ -26,6 +26,7 @@ type apiConfig struct {
 	db             *database.Queries
 	platform       string
 	tokenSecret    string
+	polkaKey       string
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -70,10 +71,11 @@ func (cfg *apiConfig) metricServer() http.Handler {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
@@ -119,10 +121,11 @@ func (cfg *apiConfig) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
+		ID:          dbUser.ID,
+		CreatedAt:   dbUser.CreatedAt,
+		UpdatedAt:   dbUser.UpdatedAt,
+		Email:       dbUser.Email,
+		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 
 	data, err := json.Marshal(user)
@@ -186,10 +189,11 @@ func (cfg *apiConfig) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
+		ID:          dbUser.ID,
+		CreatedAt:   dbUser.CreatedAt,
+		UpdatedAt:   dbUser.UpdatedAt,
+		Email:       dbUser.Email,
+		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 
 	data, err := json.Marshal(user)
@@ -514,10 +518,11 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 
 	user := LoginResponse{
 		User: User{
-			ID:        dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email:     dbUser.Email,
+			ID:          dbUser.ID,
+			CreatedAt:   dbUser.CreatedAt,
+			UpdatedAt:   dbUser.UpdatedAt,
+			Email:       dbUser.Email,
+			IsChirpyRed: dbUser.IsChirpyRed,
 		},
 		Token:        token,
 		RefreshToken: refreshToken,
@@ -615,6 +620,49 @@ func checkHealth(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("OK"))
 }
 
+func (cfg *apiConfig) handlePolkaWebhook(w http.ResponseWriter, r *http.Request) {
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil || apiKey != cfg.polkaKey {
+		log.Printf("Invalid API key: %s", err)
+		w.WriteHeader(401)
+		return
+	}
+
+	type requestBody struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID uuid.UUID `json:"user_id"`
+		} `json:"data"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	request := requestBody{}
+	err = decoder.Decode(&request)
+	if err != nil {
+		log.Printf("Error decoding request: %s", err)
+		w.WriteHeader(400)
+		return
+	}
+
+	if request.Event == "user.upgraded" {
+		_, err = cfg.db.UpdateChirpyRedStatus(r.Context(), database.UpdateChirpyRedStatusParams{
+			ID:          request.Data.UserID,
+			IsChirpyRed: true,
+		})
+		if err != nil {
+			log.Printf("Error updating chirpy red status: %s", err)
+			if err == sql.ErrNoRows {
+				w.WriteHeader(404)
+			} else {
+				w.WriteHeader(500)
+			}
+			return
+		}
+	}
+
+	w.WriteHeader(204)
+}
+
 func main() {
 	godotenv.Load()
 
@@ -628,6 +676,7 @@ func main() {
 		db:          database.New(db),
 		platform:    os.Getenv("PLATFORM"),
 		tokenSecret: os.Getenv("TOKEN_SECRET"),
+		polkaKey:    os.Getenv("POLKA_KEY"),
 	}
 
 	srv := http.Server{}
@@ -657,6 +706,8 @@ func main() {
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeToken)
+
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handlePolkaWebhook)
 
 	idleConnsClosed := make(chan struct{})
 	go func() {

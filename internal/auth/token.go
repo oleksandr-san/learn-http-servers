@@ -59,15 +59,24 @@ func MakeRefreshToken() (string, error) {
 	return hex.EncodeToString(buffer), nil
 }
 
-func GetBearerToken(headers http.Header) (string, error) {
+func getAuthorizationValue(headers http.Header, authType string) (string, error) {
 	header := headers.Get("Authorization")
 	if header == "" {
 		return "", errors.New("missing Authorization header")
 	}
 
-	if len(header) < 7 || header[:7] != "Bearer " {
+	authPrefix := authType + " "
+	if len(header) < len(authPrefix) || header[:len(authPrefix)] != authPrefix {
 		return "", errors.New("invalid Authorization header")
 	}
 
-	return header[7:], nil
+	return header[len(authPrefix):], nil
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	return getAuthorizationValue(headers, "Bearer")
+}
+
+func GetAPIKey(headers http.Header) (string, error) {
+	return getAuthorizationValue(headers, "ApiKey")
 }
