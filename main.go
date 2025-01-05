@@ -325,15 +325,29 @@ type Chirp struct {
 }
 
 func (cfg *apiConfig) listChirps(w http.ResponseWriter, r *http.Request) {
-	type responseBody []Chirp
+	var chirps []database.Chirp
+	var err error
 
-	chirps, err := cfg.db.ListAllChirps(r.Context())
+	authorID := r.URL.Query().Get("author_id")
+	if authorID != "" {
+		authorID, err := uuid.Parse(authorID)
+		if err != nil {
+			log.Printf("Error parsing UUID: %s", err)
+			w.WriteHeader(400)
+			return
+		}
+		chirps, err = cfg.db.ListChirpsByUserID(r.Context(), authorID)
+	} else {
+		chirps, err = cfg.db.ListAllChirps(r.Context())
+	}
+
 	if err != nil {
 		log.Printf("Error listing chirps: %s", err)
 		w.WriteHeader(500)
 		return
 	}
 
+	type responseBody []Chirp
 	response := responseBody{}
 	for _, chirp := range chirps {
 		response = append(response, struct {
