@@ -328,6 +328,10 @@ func (cfg *apiConfig) listChirps(w http.ResponseWriter, r *http.Request) {
 	var chirps []database.Chirp
 	var err error
 
+	listParams := database.ListChirpsParams{
+		SortAsc: r.URL.Query().Get("sort") == "asc",
+	}
+
 	authorID := r.URL.Query().Get("author_id")
 	if authorID != "" {
 		authorID, err := uuid.Parse(authorID)
@@ -336,11 +340,10 @@ func (cfg *apiConfig) listChirps(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(400)
 			return
 		}
-		chirps, err = cfg.db.ListChirpsByUserID(r.Context(), authorID)
-	} else {
-		chirps, err = cfg.db.ListAllChirps(r.Context())
+		listParams.UserID = uuid.NullUUID{UUID: authorID, Valid: true}
 	}
 
+	chirps, err = cfg.db.ListChirps(r.Context(), listParams)
 	if err != nil {
 		log.Printf("Error listing chirps: %s", err)
 		w.WriteHeader(500)

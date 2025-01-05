@@ -11,11 +11,13 @@ VALUES (
 RETURNING *;
 
 
--- name: ListAllChirps :many
-SELECT * FROM chirps ORDER BY created_at ASC;
-
--- name: ListChirpsByUserID :many
-SELECT * FROM chirps WHERE user_id = $1 ORDER BY created_at ASC;
+-- name: ListChirps :many
+SELECT *
+FROM chirps
+WHERE (sqlc.narg('user_id')::uuid IS NULL OR user_id = sqlc.narg('user_id')::uuid)
+ORDER BY
+  CASE WHEN @sort_asc::bool THEN created_at END ASC,
+  CASE WHEN NOT @sort_asc::bool THEN created_at END DESC;
 
 -- name: GetChirpByID :one
 SELECT * FROM chirps WHERE id = $1;
